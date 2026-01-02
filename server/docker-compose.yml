@@ -12,7 +12,7 @@ services:
     ports:
       - "55432:5432"
     volumes:
-      - /volume1/docker/postgres_data:/var/lib/postgresql/data
+      - /volume1/docker/eigent/postgres_data:/var/lib/postgresql/data
       #- ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     networks:
       - eigent_network
@@ -61,4 +61,5 @@ volumes:
 networks:
   eigent_network:
     driver: bridge
+
 
