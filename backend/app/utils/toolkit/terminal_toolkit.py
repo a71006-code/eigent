@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import os
+import shutil
+import subprocess
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
@@ -73,6 +75,9 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 "openpyxl",
             ],
         )
+
+        # Fix incomplete venv created by venv.create() in packaged environment
+        self._ensure_venv_complete()
 
     def _write_to_log(self, log_file: str, content: str) -> None:
         r"""Write content to log file with optional ANSI stripping.
@@ -174,6 +179,56 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             return "Command executed successfully (no output)."
 
         return result
+
+    def _ensure_venv_complete(self) -> None:
+        """Ensure the virtual environment is complete with activate script.
+
+        In packaged environments, venv.create() may create incomplete venvs
+        missing the activate script. If detected, recreate with uv.
+        """
+        env_path = self.initial_env_path or self.cloned_env_path
+        if not env_path or not os.path.exists(env_path):
+            return
+
+        activate_path = os.path.join(env_path, "bin", "activate")
+        if os.path.exists(activate_path):
+            return
+
+        # Venv is incomplete, try to recreate with uv
+        uv_path = shutil.which("uv")
+        if not uv_path:
+            logger.warning("Incomplete venv and uv not available", extra={"api_task_id": self.api_task_id})
+            return
+
+        # Get Python version from pyvenv.cfg
+        python_version = "3.10"
+        pyvenv_cfg = os.path.join(env_path, "pyvenv.cfg")
+        if os.path.exists(pyvenv_cfg):
+            try:
+                with open(pyvenv_cfg, 'r') as f:
+                    for line in f:
+                        if line.strip().startswith('version'):
+                            parts = line.split('=', 1)[1].strip().split('.')
+                            if len(parts) >= 2:
+                                python_version = f"{parts[0]}.{parts[1]}"
+                            break
+            except Exception:
+                pass
+
+        try:
+            shutil.rmtree(env_path)
+            result = subprocess.run(
+                [uv_path, "venv", "--python", python_version, env_path],
+                capture_output=True,
+                timeout=120,
+            )
+            if result.returncode == 0:
+                self.python_executable = os.path.join(env_path, "bin", "python")
+                logger.info(f"Recreated venv with uv at {env_path}", extra={"api_task_id": self.api_task_id})
+            else:
+                logger.error(f"uv venv failed: {result.stderr.decode()}", extra={"api_task_id": self.api_task_id})
+        except Exception as e:
+            logger.error(f"Failed to recreate venv: {e}", extra={"api_task_id": self.api_task_id})
 
     @classmethod
     def shutdown(cls):
