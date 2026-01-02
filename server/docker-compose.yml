@@ -37,6 +37,7 @@ services:
       - DATABASE_URL=postgresql://postgres:123456@postgres:5432/eigent
       - ENVIRONMENT=production
       - DEBUG=false
+      - secret_key=some-long-random-string
     # volumes:
     #   - ./app:/app/app
     #   - ./alembic:/app/alembic
@@ -61,5 +62,6 @@ volumes:
 networks:
   eigent_network:
     driver: bridge
+
 
 
